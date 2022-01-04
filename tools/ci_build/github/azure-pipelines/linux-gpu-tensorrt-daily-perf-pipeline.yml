@@ -74,6 +74,9 @@ jobs:
       ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
         value: 20.12
         
+    - name: anubis_image
+      value: ort-master-py38
+
     - name: build_args
       ${{ if eq(parameters.RunNvidiaContainer, true) }}:
         value: Dockerfile.tensorrt-perf -t $(trtContainer) -v ${{parameters.TrtVersion}} -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
@@ -105,7 +108,11 @@ jobs:
 
     - ${{ if eq(parameters.PublishWheel, true) }}:
       
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/copy_wheel.sh -t $(trtContainer) -i ort-master'
+      - script: 'docker build --build-arg IMAGE=ort-master -t $(anubis_image) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38 .'
+        displayName: 'Build Python 3.8 Images'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/copy_wheel.sh -t $(trtContainer) -i $(anubis_image)'
         displayName: 'Copy Wheel from Docker'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis'
     
