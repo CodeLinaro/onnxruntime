@@ -889,7 +889,7 @@ QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager*
       ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
                                                                       default_htp_performance_mode));
     }
-    if (default_rpc_control_latency > 0) {
+    if (1) {
       ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcControlLatency(htp_power_config_id_,
                                                                          default_rpc_control_latency));
     }

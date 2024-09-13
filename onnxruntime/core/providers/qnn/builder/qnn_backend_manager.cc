@@ -592,6 +592,9 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
   }
 
   LOGS(*logger_, VERBOSE) << "Get context binary buffer succeed.";
+  //std::ofstream fout("ffffffff.bin", std::ios::binary);
+  //fout.write((char*)context_buffer.get(), static_cast<int64_t>(required_buffer_size));
+  //fout.flush();
   return context_buffer;
 }
 
@@ -762,6 +765,8 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
   // choose performance mode
   switch (htp_performance_mode) {
     case HtpPerformanceMode::kHtpBurst:
+      dcvs_v3.powerMode = QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_ADJUST_UP_DOWN;
+      LOGS(*logger_, ERROR) << "[Kiwi] Set QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_ADJUST_UP_DOWN";
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepMinLatency;
       dcvs_v3.dcvsEnable = kDcvsDisable;
@@ -880,7 +885,9 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
 
 Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_id,
                                                uint32_t rpc_control_latency) {
-  if (rpc_control_latency != 0) {
+  if (1) {
+    LOGS(*logger_, ERROR) << "[Kiwi] Set RPC polling 9999us and control latency 0us anyway!!";
+
     QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
     auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
     ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -896,9 +903,13 @@ Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_
     QnnHtpPerfInfrastructure_PowerConfig_t& rpc_control_latency_cfg = rpc_power_configs[0];
     // v68 doesn't support this.
     QnnHtpPerfInfrastructure_PowerConfig_t& rpc_polling_time = rpc_power_configs[1];
+
     rpc_control_latency_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
+    rpc_control_latency_cfg.rpcControlLatencyConfig = 0;
+
     rpc_polling_time.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
-    rpc_control_latency_cfg.rpcControlLatencyConfig = rpc_control_latency;
+    rpc_polling_time.rpcPollingTimeConfig = 9999;
+
     std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr =
         ObtainNullTermPtrVector(rpc_power_configs);
     status = htp_perf_infra.setPowerConfig(htp_power_config_client_id, perf_power_configs_ptr.data());
