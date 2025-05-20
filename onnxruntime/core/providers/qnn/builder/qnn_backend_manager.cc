@@ -709,7 +709,9 @@ Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t
   return Status::OK();
 }
 
-Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
+Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing,
+                                        bool enable_vtcm_backup_buffer_sharing,
+                                        const std::unordered_map<std::string, std::vector<unsigned char>>& buffer_map) {
   if (true == context_created_) {
     LOGS_DEFAULT(INFO) << "Context created already.";
     return Status::OK();
@@ -722,11 +724,19 @@ Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
   context_config_weight_sharing.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
   context_config_weight_sharing.customConfig = &custom_config;
 
+  QnnContext_Config_t context_config_resource_sharing = QNN_CONTEXT_CONFIG_INIT;
+  QnnHtpContext_CustomConfig_t resource_sharing_custom_config;
+  resource_sharing_custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_SHARE_RESOURCES;
+  resource_sharing_custom_config.shareResources = enable_vtcm_backup_buffer_sharing;
+  context_config_resource_sharing.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
+  context_config_resource_sharing.customConfig = &resource_sharing_custom_config;
+
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
 
   const QnnContext_Config_t* npu_context_configs[] = {&context_priority_config,
                                                       &context_config_weight_sharing,
+                                                      &context_config_resource_sharing,
                                                       nullptr};
   const QnnContext_Config_t* empty_context_configs[] = {nullptr};
 
@@ -751,10 +761,41 @@ Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
   }
 
   Qnn_ContextHandle_t context = nullptr;
-  Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_,
-                                                          device_handle_,
-                                                          configs,
-                                                          &context);
+  Qnn_ErrorHandle_t result = 0;
+
+  if (enable_vtcm_backup_buffer_sharing) {
+    // need to persist context params objs throguh entirety of QNN context creation
+    std::vector<QnnContext_Params_t> context_params_list;
+    std::vector<const QnnContext_Params_t*> context_params_ptr_list;
+
+    for (auto it : buffer_map) {
+      auto buffer = it.second;
+      QnnContext_ParamsV1_t context_params_v1 = {nullptr,
+                                                 buffer.data(),
+                                                 buffer.capacity(),
+                                                 nullptr,
+                                                 nullptr,
+                                                 nullptr};
+
+      QnnContext_Params_t context_params = {QnnContext_ParamsVersion_t::QNN_CONTEXT_PARAMS_VERSION_1,
+                                          context_params_v1};
+
+      context_params_list.push_back(context_params);
+      context_params_ptr_list.push_back(&context_params_list.back());
+    }
+    context_params_ptr_list.push_back(nullptr);
+
+    result = qnn_interface_.contextCreateFromBinaryListAsync(backend_handle_,
+                                                             device_handle_,
+                                                             context_params_ptr_list.data(),
+                                                             configs,
+                                                             nullptr);
+  } else {
+    result = qnn_interface_.contextCreate(backend_handle_,
+                                          device_handle_,
+                                          configs,
+                                          &context);
+  }
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
 
@@ -1002,7 +1043,9 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool load_from_cached_context,
                                        bool need_load_system_lib,
-                                       bool share_ep_contexts) {
+                                       bool share_ep_contexts,
+                                       bool enable_vtcm_backup_buffer_sharing,
+                                       const std::unordered_map<std::string, std::vector<unsigned char>>& buffer_map) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
@@ -1066,9 +1109,10 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 #endif
   }
 
-  if (!load_from_cached_context) {
+  if (!load_from_cached_context || enable_vtcm_backup_buffer_sharing) {
     if (status.IsOK()) {
-      status = CreateContext(enable_htp_weight_sharing);
+      status = CreateContext(enable_htp_weight_sharing, enable_vtcm_backup_buffer_sharing,
+                             buffer_map);
     }
     if (status.IsOK()) {
       LOGS(logger, VERBOSE) << "CreateContext succeed.";
