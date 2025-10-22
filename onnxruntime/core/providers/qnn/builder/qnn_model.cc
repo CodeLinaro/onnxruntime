@@ -6,6 +6,7 @@
 #include <iostream>
 #include <fstream>
 #include <gsl/gsl>
+#include <thread>
 #include "QnnOpDef.h"
 
 #include "core/providers/qnn/builder/op_builder_factory.h"
@@ -224,6 +225,11 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
 
 Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
                               const logging::Logger& logger) {
+
+  auto thread_id = std::this_thread::get_id();
+  LOGS_DEFAULT(INFO) << "FINDME: [" << thread_id << "] QnnModel::ExecuteGraph START";
+  std::cout << "FINDME: [" << thread_id << "] QnnModel::ExecuteGraph START\n";
+
   LOGS(logger, VERBOSE) << "QnnModel::ExecuteGraphs";
   const size_t num_inputs = context.GetInputCount();
   const size_t num_outputs = context.GetOutputCount();
@@ -321,6 +327,9 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
   if (QNN_GRAPH_NO_ERROR != execute_status) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN graph execute error. Error code: ", execute_status);
   }
+
+  LOGS_DEFAULT(INFO) << "FINDME: [" << thread_id << "] QnnModel::ExecuteGraph END";
+  std::cout << "FINDME: [" << thread_id << "] QnnModel::ExecuteGraph END\n";
 
   return Status::OK();
 }

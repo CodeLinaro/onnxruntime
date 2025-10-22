@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
+#include <thread>
 #include "QnnOpDef.h"
 #include "CPU/QnnCpuCommon.h"
 #include "GPU/QnnGpuCommon.h"
@@ -1203,6 +1205,9 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 #endif
     return Status::OK();
   }
+  auto thread_id = std::this_thread::get_id();
+  LOGS_DEFAULT(INFO) << "FINDME: [" << thread_id << "] QnnBackendManager::SetupBackend (FIRST TIME) START";
+  std::cout << "FINDME: [" << thread_id << "] QnnBackendManager::SetupBackend (FIRST TIME) START\n";
 
   vtcm_backup_buffer_sharing_enabled_ = enable_vtcm_backup_buffer_sharing;
 
@@ -1285,10 +1290,17 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     ReleaseResources();
   }
 
+  LOGS_DEFAULT(INFO) << "FINDME: [" << thread_id << "] QnnBackendManager::SetupBackend (FIRST TIME) END";
+  std::cout << "FINDME: [" << thread_id << "] QnnBackendManager::SetupBackend (FIRST TIME) END\n";
+
   return status;
 }
 
 Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_id, uint32_t& htp_power_config_id) {
+
+  auto thread_id = std::this_thread::get_id();
+  LOGS_DEFAULT(INFO) << "FINDME: [" << thread_id << "] CREATING HTP POWER CFG ID";
+  std::cout << "FINDME: [" << thread_id << "] CREATING HTP POWER CFG ID\n";
   // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
   // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
   // create an HTP power config ID. Otherwise, this causes a segfault because the QNN backend lib is unloaded.
@@ -1305,6 +1317,8 @@ Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_
   status = htp_perf_infra.createPowerConfigId(device_id, core_id, &htp_power_config_id);
   ORT_RETURN_IF(QNN_SUCCESS != status, "createPowerConfigId failed.");
 
+  LOGS_DEFAULT(INFO) << "FINDME: [" << thread_id << "] SUCCESSFULLY CREATED POWER CFG ID: " << std::to_string(htp_power_config_id);
+  std::cout << "FINDME: [" << thread_id << "] SUCCESSFULLY CREATED POWER CFG ID: " << std::to_string(htp_power_config_id) << std::endl;
   return Status::OK();
 }
 
@@ -1499,6 +1513,9 @@ Status QnnBackendManager::SetRpcPowerConfigs(uint32_t htp_power_config_client_id
 }
 
 Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) {
+  auto thread_id = std::this_thread::get_id();
+  LOGS_DEFAULT(INFO) << "FINDME: [" << thread_id << "] DESTROYING HTP POWER CFG ID: " << std::to_string(htp_power_config_id);
+  std::cout << "FINDME: [" << thread_id << "] DESTROYING HTP POWER CFG ID: " << std::to_string(htp_power_config_id) << std::endl;
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
   ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -1510,6 +1527,8 @@ Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) 
 
   Qnn_ErrorHandle_t destroy_ret = htp_perf_infra.destroyPowerConfigId(htp_power_config_id);
   ORT_RETURN_IF(QNN_SUCCESS != destroy_ret, "destroyPowerConfigId failed.");
+  LOGS_DEFAULT(INFO) << "FINDME: [" << thread_id << "] SUCCESSFULLY DESTROYED HTP POWER CFG ID";
+  std::cout << "FINDME: [" << thread_id << "] SUCCESSFULLY DESTROYED HTP POWER CFG ID\n";
   return Status::OK();
 }
 
@@ -1921,6 +1940,9 @@ const std::string QnnBackendManager::ExtractQnnScalarValue(const Qnn_Scalar_t& s
 }
 
 QnnBackendManager::~QnnBackendManager() {
+  auto thread_id = std::this_thread::get_id();
+  LOGS_DEFAULT(INFO) << "FINDME: [" << thread_id << "] ~QnnBackendManager DTOR";
+  std::cout << "FINDME: [" << thread_id << "] ~QnnBackendManager DTOR\n";
   ReleaseResources();
 }
 

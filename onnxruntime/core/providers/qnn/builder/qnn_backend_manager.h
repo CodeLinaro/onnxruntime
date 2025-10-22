@@ -15,6 +15,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -134,6 +135,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         htp_arch_(config.htp_arch),
         soc_model_(config.soc_model),
         op_packages_(config.op_packages) {
+
+  auto thread_id = std::this_thread::get_id();
+  LOGS_DEFAULT(INFO) << "FINDME: [" << thread_id << "] QnnBackendManager CTOR";
+  std::cout << "FINDME: [" << thread_id << "] QnnBackendManager CTOR\n";
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
