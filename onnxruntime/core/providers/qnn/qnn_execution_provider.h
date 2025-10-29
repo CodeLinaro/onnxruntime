@@ -82,6 +82,65 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool IsHtpSharedMemoryAllocatorAvailable() const { return rpcmem_library_ != nullptr; }
 
  private:
+  class ManagedHtpPowerConfigId {
+  public:
+    ManagedHtpPowerConfigId(uint32_t htp_power_config_id, std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager)
+       : htp_power_config_id_(htp_power_config_id),
+         qnn_backend_manager_(qnn_backend_manager)
+    {
+    }
+
+    ~ManagedHtpPowerConfigId() {
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(htp_power_config_id_));
+    }
+
+    uint32_t GetHtpPowerConfigId() {
+      return htp_power_config_id_;
+    }
+  private:
+    uint32_t htp_power_config_id_;
+    std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
+  };
+
+  void CreateHtpPowerConfigId() const {
+    std::lock_guard<std::mutex> lock(htp_power_config_id_mutex_);
+    if (managed_htp_power_config_id_) {
+      return;
+    }
+
+    constexpr uint32_t core_id = 0;
+    uint32_t htp_power_config_id;
+
+    Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id_, core_id, htp_power_config_id);
+
+    if (rt == Status::OK()) {
+      managed_htp_power_config_id_ = std::make_shared<ManagedHtpPowerConfigId>(htp_power_config_id, qnn_backend_manager_);
+
+      if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode_) {
+        ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id,
+                                                                        default_htp_performance_mode_));
+      }
+      if (default_rpc_control_latency_ > 0 || default_rpc_polling_time_ > 0) {
+        ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcPowerConfigs(htp_power_config_id,
+                                                                         default_rpc_control_latency_,
+                                                                         default_rpc_polling_time_));
+      }
+    }
+  }
+
+  bool IsHtpPowerConfigIdValid() {
+    std::lock_guard<std::mutex> lock(htp_power_config_id_mutex_);
+    return managed_htp_power_config_id_ != nullptr;
+  }
+
+  uint32_t GetHtpPowerConfigId() {
+    std::lock_guard<std::mutex> lock(htp_power_config_id_mutex_);
+    return managed_htp_power_config_id_->GetHtpPowerConfigId();
+  }
+
+  mutable std::shared_ptr<ManagedHtpPowerConfigId> managed_htp_power_config_id_ = nullptr;
+  mutable std::mutex htp_power_config_id_mutex_;
+
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
   // Note: Using shared_ptr<QnnBackendManager> so that we can refer to it with a weak_ptr from a
   // HtpSharedMemoryAllocator allocation cleanup callback.
@@ -115,6 +174,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().
   std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
 
+  /*
   class PerThreadContext final {
    public:
     PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
@@ -174,6 +234,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   PerThreadContext& GetPerThreadContext() const;
   void ReleasePerThreadContext() const;
+  */
 };
 
 }  // namespace onnxruntime

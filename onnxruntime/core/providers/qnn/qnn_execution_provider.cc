@@ -336,6 +336,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     stop_share_ep_contexts_ =
         config_options->GetConfigOrDefault(kOrtSessionOptionStopShareEpContexts, "0") == "1";
     LOGS_DEFAULT(VERBOSE) << "User specified option - stop share EP contexts across sessions: " << stop_share_ep_contexts_;
+
+    //managed_htp_power_config_id_ = std::make_shared<ManagedHtpPowerConfigId>();
   }
 
   std::string backend_path{};
@@ -639,6 +641,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 }
 
 QNNExecutionProvider::~QNNExecutionProvider() {
+  /*
   // clean up thread local context caches
   std::lock_guard<std::mutex> lock(context_state_.mutex);
   for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
@@ -646,6 +649,7 @@ QNNExecutionProvider::~QNNExecutionProvider() {
     if (!cache) continue;
     ORT_IGNORE_RETURN_VALUE(cache->erase(this));
   }
+  */
 
   // Unregister the ETW callback
 #if defined(_WIN32)
@@ -653,6 +657,12 @@ QNNExecutionProvider::~QNNExecutionProvider() {
     logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
   }
 #endif
+  {
+    std::lock_guard<std::mutex> lock(htp_power_config_id_mutex_);
+    if (managed_htp_power_config_id_) {
+      managed_htp_power_config_id_.reset();
+    }
+  }
 }
 
 // Logs information about the supported/unsupported nodes.
@@ -952,7 +962,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   if (IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
     // Set the power config id and the default power mode from provider option for main thread,
     // otherwise it will mess up the power mode if user just create session without run it.
-    GetPerThreadContext();
+    CreateHtpPowerConfigId();
   }
 
   // Report error if QNN CPU backend is loaded while CPU fallback is disabled
@@ -1351,7 +1361,7 @@ const InlinedVector<const Node*> QNNExecutionProvider::GetEpContextNodes() const
 
   return ep_context_nodes;
 }
-
+/*
 QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
                                                          uint32_t device_id,
                                                          uint32_t core_id,
@@ -1438,6 +1448,7 @@ void QNNExecutionProvider::ReleasePerThreadContext() const {
 
   per_thread_context_cache->erase(cached_context_it);
 }
+*/
 
 static bool TryGetConfigEntry(const ConfigOptions& config_options, const std::string& key, std::string& value) {
   std::optional<std::string> new_value = config_options.GetConfigEntry(key);
@@ -1472,18 +1483,18 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
   }
 
   uint32_t rpc_polling_time = 0;
-  if (qnn::HtpPerformanceMode::kHtpBurst != htp_performance_mode) {
+  if (qnn::HtpPerformanceMode::kHtpBurst == htp_performance_mode) {
     rpc_polling_time = 9999;
   }
 
-  if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+  if (IsHtpPowerConfigIdValid()) {
     if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetHtpPowerConfigId(),
                                                                   htp_performance_mode));
     }
 
     if (rpc_control_latency > 0 || rpc_polling_time > 0) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcPowerConfigs(GetPerThreadContext().GetHtpPowerConfigId(),
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcPowerConfigs(GetHtpPowerConfigId(),
                                                                    rpc_control_latency,
                                                                    rpc_polling_time));
     }
@@ -1514,10 +1525,10 @@ Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::R
   }
 
   if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-    if (!GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+    if (!IsHtpPowerConfigIdValid()) {
       return Status::OK();
     }
-    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetHtpPowerConfigId(),
                                                                 htp_performance_mode));
   }
 
@@ -1583,8 +1594,8 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
       }
       qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
       ParseHtpPerformanceMode(value, htp_performance_mode);
-      if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
-        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+      if (IsHtpPowerConfigIdValid()) {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetHtpPowerConfigId(),
                                                                     htp_performance_mode));
       }
     } else {
