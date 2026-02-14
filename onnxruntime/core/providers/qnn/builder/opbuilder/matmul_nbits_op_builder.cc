@@ -827,78 +827,78 @@ Status MatMulNBitsOpBuilder::ProcessAttributesAndOutputs([[maybe_unused]]QnnMode
     split_zeros_tensor_names.push_back(node_unit.Name() + "Zeros_" + std::to_string(i));
   }
 
-  if (num_tokens == 1) {
-    LOGS(logger, INFO) << "Using the MatMulNBits kernel" << do_op_validation;
-
-    for (size_t i = 0; i < hints.split_count; ++i) {
-      std::vector<std::string> param_tensor_names = load_parmams_to_qnn(qnn_model_wrapper, node_unit.Index(), kernel_params, node_unit.Name() + "_split_" + std::to_string(i));
-
-      if (hints.scratch) {
-        // scratch buffer sizes, maybe move inside a class
-        int32_t GROUP_SIZE = 4;
-        int32_t LUT_WIDTH = 2 << (GROUP_SIZE - 1);
-
-        size_t lut_size = (kernel_params.K.uint32Value / GROUP_SIZE) * LUT_WIDTH * sizeof(uint16_t);
-
-        size_t scratch_size = lut_size;
-
-        // scratch shape
-        std::vector<uint32_t> scratch_shape = {1, 1, 1, (uint32_t)scratch_size};  // This is a placeholder, actual shape will be determined by the kernel.
-        std::string scratch_name = node_unit.Name() + "Scratch_" + std::to_string(i);
-        QnnTensorWrapper scratch_tensor_wrapper(
-            scratch_name,
-            QNN_TENSOR_TYPE_NATIVE,
-            QNN_DATATYPE_UINT_8,
-            std::move(QnnQuantParamsWrapper()),  // If unquantized, otherwise pass scale/offset
-            std::move(scratch_shape));
-        ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(scratch_tensor_wrapper)), "Failed to add scratch tensor");
-
-        ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(node_unit.Name() + "_split_" + std::to_string(i),
-                                                          "MatMulNBits",
-                                                          "MatMulNBits",
-                                                          {node_inputs[0].node_arg.Name(), split_b_tensor_names[i], split_scales_tensor_names[i], split_zeros_tensor_names[i]},
-                                                          {split_output_tensor_names[i], scratch_name},
-                                                          std::move(param_tensor_names),
-                                                          do_op_validation),
-                          "Failed to add fused MatMulNBits fused node.");
-
-      } else {  // hints.scratch = false
-        LOGS(logger, INFO) << "Using the MatMulNBits kernel without scratch buffer";
-        ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(node_unit.Name() + "_split_" + std::to_string(i),
-                                                          "MatMulNBits",
-                                                          "MatMulNBits",
-                                                          {node_inputs[0].node_arg.Name(), split_b_tensor_names[i], split_scales_tensor_names[i], split_zeros_tensor_names[i]},
-                                                          {split_output_tensor_names[i]},
-                                                          std::move(param_tensor_names),
-                                                          do_op_validation),
-                          "Failed to add fused MatMulNBits fused node without scratch buffer.");
-      }
-    }
-
-    if (hints.split_count != 1) {
-      std::vector<std::string> param_tensor_names_concat;
-      int output_ndim = node_outputs[0].node_arg.Shape()->dim_size();
-      int32_t default_axis = output_ndim - 1;
-      Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
-      axis_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
-      axis_qnn_scalar.int32Value = default_axis;
-      QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_CONCAT_PARAM_AXIS, axis_qnn_scalar);
-      param_tensor_names_concat.push_back(axis_param.GetParamTensorName());
-      qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
-      // if we are splitting the output, we need to concatenate the outputs.
-      std::string concat_name = node_unit.Name() + "Concat";
-      LOGS(logger, INFO) << "Creating Concat node: " << concat_name;
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(concat_name,
-                                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                        QNN_OP_CONCAT,
-                                                        std::move(split_output_tensor_names),
-                                                        {node_outputs[0].node_arg.Name()},
-                                                        std::move(param_tensor_names_concat),
-                                                        do_op_validation),
-                        "Failed to add Concat node.");
-    }
-
-  } else {  // num_tokens > 1
+//  if (num_tokens == 1) {
+//    LOGS(logger, INFO) << "Using the MatMulNBits kernel" << do_op_validation;
+//
+//    for (size_t i = 0; i < hints.split_count; ++i) {
+//      std::vector<std::string> param_tensor_names = load_parmams_to_qnn(qnn_model_wrapper, node_unit.Index(), kernel_params, node_unit.Name() + "_split_" + std::to_string(i));
+//
+//      if (hints.scratch) {
+//        // scratch buffer sizes, maybe move inside a class
+//        int32_t GROUP_SIZE = 4;
+//        int32_t LUT_WIDTH = 2 << (GROUP_SIZE - 1);
+//
+//        size_t lut_size = (kernel_params.K.uint32Value / GROUP_SIZE) * LUT_WIDTH * sizeof(uint16_t);
+//
+//        size_t scratch_size = lut_size;
+//
+//        // scratch shape
+//        std::vector<uint32_t> scratch_shape = {1, 1, 1, (uint32_t)scratch_size};  // This is a placeholder, actual shape will be determined by the kernel.
+//        std::string scratch_name = node_unit.Name() + "Scratch_" + std::to_string(i);
+//        QnnTensorWrapper scratch_tensor_wrapper(
+//            scratch_name,
+//            QNN_TENSOR_TYPE_NATIVE,
+//            QNN_DATATYPE_UINT_8,
+//            std::move(QnnQuantParamsWrapper()),  // If unquantized, otherwise pass scale/offset
+//            std::move(scratch_shape));
+//        ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(scratch_tensor_wrapper)), "Failed to add scratch tensor");
+//
+//        ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(node_unit.Name() + "_split_" + std::to_string(i),
+//                                                          "MatMulNBits",
+//                                                          "MatMulNBits",
+//                                                          {node_inputs[0].node_arg.Name(), split_b_tensor_names[i], split_scales_tensor_names[i], split_zeros_tensor_names[i]},
+//                                                          {split_output_tensor_names[i], scratch_name},
+//                                                          std::move(param_tensor_names),
+//                                                          do_op_validation),
+//                          "Failed to add fused MatMulNBits fused node.");
+//
+//      } else {  // hints.scratch = false
+//        LOGS(logger, INFO) << "Using the MatMulNBits kernel without scratch buffer";
+//        ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(node_unit.Name() + "_split_" + std::to_string(i),
+//                                                          "MatMulNBits",
+//                                                          "MatMulNBits",
+//                                                          {node_inputs[0].node_arg.Name(), split_b_tensor_names[i], split_scales_tensor_names[i], split_zeros_tensor_names[i]},
+//                                                          {split_output_tensor_names[i]},
+//                                                          std::move(param_tensor_names),
+//                                                          do_op_validation),
+//                          "Failed to add fused MatMulNBits fused node without scratch buffer.");
+//      }
+//    }
+//
+//    if (hints.split_count != 1) {
+//      std::vector<std::string> param_tensor_names_concat;
+//      int output_ndim = node_outputs[0].node_arg.Shape()->dim_size();
+//      int32_t default_axis = output_ndim - 1;
+//      Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
+//      axis_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+//      axis_qnn_scalar.int32Value = default_axis;
+//      QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_CONCAT_PARAM_AXIS, axis_qnn_scalar);
+//      param_tensor_names_concat.push_back(axis_param.GetParamTensorName());
+//      qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
+//      // if we are splitting the output, we need to concatenate the outputs.
+//      std::string concat_name = node_unit.Name() + "Concat";
+//      LOGS(logger, INFO) << "Creating Concat node: " << concat_name;
+//      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(concat_name,
+//                                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
+//                                                        QNN_OP_CONCAT,
+//                                                        std::move(split_output_tensor_names),
+//                                                        {node_outputs[0].node_arg.Name()},
+//                                                        std::move(param_tensor_names_concat),
+//                                                        do_op_validation),
+//                        "Failed to add Concat node.");
+//    }
+//
+//  } else {  // num_tokens > 1
     LOGS(logger, INFO) << "Using the unpack_weights kernel with regular matmul, num tokens:" << num_tokens;
     // rather than using the MatMulNBits kernel, we will use the unpack_weights kernel to get the weights, then we will pass these to a regular MatMul.
 
@@ -1389,7 +1389,7 @@ Status MatMulNBitsOpBuilder::ProcessAttributesAndOutputs([[maybe_unused]]QnnMode
                                                         do_op_validation),
                         "Failed to add fused Concat node.");
     }
-  }
+  //}
 
   return Status::OK();
 }
