@@ -1800,6 +1800,25 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
   std::remove(qnn_ctx_binary_file_name1.c_str());
 }
 
+TEST_F(QnnHTPBackendTests, prototype) {
+  // std::remove("veg_sha_ctx.onnx");
+  //  Disable the test on test-android job in Qualcomm CI here while we investigate
+  //  but do not upstream this change.
+  ProviderOptions provider_options;
+  provider_options["backend_path"] = "QnnHtp.dll";
+  provider_options["htp_graph_finalization_optimization_mode"] = "3";
+  provider_options["soc_model"] = "88";
+  provider_options["htp_arch"] = "81";
+
+  Ort::SessionOptions so1;
+  so1.SetLogId("so1");
+  so1.SetLogSeverityLevel(0);
+  so1.AppendExecutionProvider("QNN", provider_options);
+  std::string m("test.onnx");
+  std::wstring m_path(m.begin(), m.end());
+  Ort::Session session1(*ort_env, m_path.c_str(), so1);
+}
+
 TEST_F(QnnHTPBackendTests, VTCMBackupBufferSharing) {
   ProviderOptions provider_options;
   provider_options["offload_graph_io_quantization"] = "0";
