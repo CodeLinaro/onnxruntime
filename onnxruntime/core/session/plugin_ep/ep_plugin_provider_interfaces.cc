@@ -116,17 +116,27 @@ struct PluginEpMetaDefNameFunctor {
 //
 
 static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices) {
-  // Get the OrtDevice from OrtEpDevice.device_memory_info if it is set. Otherwise, we set it to CPU.
-  // If there are multiple OrtEpDevice instances, the device_memory_info must be consistent for all.
+  // Get the OrtDevice from OrtEpDevice.device_memory_info/host_accessible_memory_info if it is set.
+  // Otherwise, we set it to CPU. If there are multiple OrtEpDevice instances, the memory info
+  // must be consistent for all.
+
+  const auto get_memory_info_from_ep_device = [](const OrtEpDevice* ep_device) -> const OrtMemoryInfo* {
+    if (ep_device->device_memory_info) {
+      return ep_device->device_memory_info;
+    } else if (ep_device->host_accessible_memory_info) {
+      return ep_device->host_accessible_memory_info;
+    } else {
+      return nullptr;
+    }
+  };
 
   ORT_ENFORCE(!ep_devices.empty());  // Should not be possible to create an EP without OrtEpDevices.
-
-  const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
+  const OrtMemoryInfo* memory_info = get_memory_info_from_ep_device(ep_devices[0]);
 
   // Check assertion that all OrtEpDevice instances must have equivalent device_memory_infos
   bool all_match = std::all_of(ep_devices.begin() + 1, ep_devices.end(),
-                               [mem_a = device_memory_info](const OrtEpDevice* ep_device) {
-                                 const OrtMemoryInfo* mem_b = ep_device->device_memory_info;
+                               [mem_a = memory_info, &get_memory_info_from_ep_device](const OrtEpDevice* ep_device) {
+                                 const OrtMemoryInfo* mem_b = get_memory_info_from_ep_device(ep_device);
 
                                  if (mem_a == mem_b) {
                                    return true;  // Point to the same OrtMemoryInfo instance.
@@ -141,10 +151,10 @@ static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_
                                });
   if (!all_match) {
     ORT_THROW("Error creating execution provider '", ep_devices[0]->ep_name,
-              "': expected all OrtEpDevice instances to use the same device_memory_info.");
+              "': expected all OrtEpDevice instances to use the same device_memory_info/host_accessible_memory_info.");
   }
 
-  return device_memory_info != nullptr ? device_memory_info->device : OrtDevice();
+  return memory_info != nullptr ? memory_info->device : OrtDevice();
 }
 
 static const Node* FindFirstNodeAssignedToOtherEP(const std::string& ep_type,
